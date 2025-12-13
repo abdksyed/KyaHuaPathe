@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+
+Use devin mcp if you want to ask any query about how to use any library, what are the internal workings etc.
+The repos for each of the tool we use are
+Google ADK: google/adk-python
+Python telegram Bot: python-telegram-bot/python-telegram-bot
+Pydantic Logifre: pydantic/logfire
+
+
+For any general documentation about these repo use the context7 mcp.
