@@ -1,26 +1,35 @@
-import sys
-import asyncio
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+from src.telegram.bot import start_bot, stop_bot
 
 load_dotenv()
 
-from src.telegram import bot
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start the Telegram bot
+    await start_bot()
+    yield
+    # Shutdown: Stop the Telegram bot gracefully
+    await stop_bot()
 
-def main():
-    if len(sys.argv) > 2 or len(sys.argv) == 1:
-        raise ValueError("Invalid number of arguments. Usage: python main.py <bot_type>")
-    
-    bot_type = sys.argv[1]
-    if bot_type not in ["telegram", "discord", "whatsapp"]:
-        raise ValueError("Invalid bot type")
-    
-    if bot_type == "telegram":
-        asyncio.run(bot.init())
-    elif bot_type == "discord":
-        raise NotImplementedError("Discord bot not implemented yet")
-    elif bot_type == "whatsapp":
-        raise NotImplementedError("Whatsapp bot not implemented yet")
-    
+
+# app init
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/monitor")
+async def serverRunning():
+    response = {"status": "running", "data": "Pathe is Up!"}
+    return JSONResponse(content=response)
+
+@app.get("/health")
+async def healthCheck():
+    response = {"status": "healthy", "data": "Pathe is Up!"}
+    return JSONResponse(content=response)
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=7347, reload=True)

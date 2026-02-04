@@ -1,0 +1,12 @@
+services:
+    kyahuapathe:
+        container_name: kyahuapathe
+        build: .
+        env_file:
+            - .env
+        ports:
+            - ${AGENT_PORT}:${AGENT_PORT}
+        restart: unless-stopped
+        working_dir: /app
+        volumes:
+            - ./src:/app/src

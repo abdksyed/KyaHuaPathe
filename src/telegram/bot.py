@@ -1,31 +1,65 @@
-import asyncio
 import os
+from functools import partial
 
-from telegram import Update  # for incoming updates from telegram
+from telegram import Update, User  # for incoming updates from telegram
 from telegram.ext import (
     Application, # main class 
     CommandHandler, # to handle / commands like /start
     MessageHandler, # text messages
     filters, # filtering message types
-    ContextTypes # type for callback context
+    ContextTypes, # type for callback context
 )
+from telegram.helpers import escape_markdown
+from telegram.constants import MessageLimit
+
+from src.agent import agent_service
+
+# Store application globally for lifespan management
+application = None
+MAX = MessageLimit.MAX_TEXT_LENGTH  # 4096
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Kya Hua Pathe? (Whats up bro?)")
 
+
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Abhi thoda kaam chalra pathe, thodi der baad message karro!")
+    await agent_service.run_query(
+        message=update.message.text,
+        user_id=str(update.message.from_user.id),
+        session_id=str(update.message.from_user.id),
+        callback=partial(format_and_send_reply, update=update)
+    )
 
-def init():
-    # Build your application  
+async def format_and_send_reply(message: str, update: Update):
+    # TODO: For some reason the markdown is not in proper format
+    # Coming escaped as: \#\#\# \*\*Gemini 2\.0 Models\*\* \(Legacy/Deprecated\)
+    # If we are not escaping, then its throwing some error bad markdown error
+    formatted_message = escape_markdown(message, version=2)
+    def chunk(text, n=MAX):
+        for i in range(0, len(text), n):
+            yield text[i:i+n]
+    for chunk in chunk(formatted_message):
+        await update.message.reply_text(chunk)
+
+
+async def start_bot():
+    """Start the Telegram bot (non-blocking for FastAPI integration)"""
+    global application
     application = Application.builder().token(os.environ.get("TELEGRAM_BOT_TOKEN")).build()
-
+    
     # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+    
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
 
-    # Run the bot
-    application.run_polling()
 
-if __name__ == "__main__":
-    asyncio.run(init())
+async def stop_bot():
+    """Stop the Telegram bot gracefully"""
+    global application
+    if application:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
