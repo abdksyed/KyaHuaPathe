@@ -1,12 +1,12 @@
 from dotenv import load_dotenv
+load_dotenv() 
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from src.telegram.bot import start_bot, stop_bot
-
-load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

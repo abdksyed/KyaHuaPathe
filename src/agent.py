@@ -1,3 +1,7 @@
+import os
+import logfire
+from typing import List
+
 from google.adk.agents import LlmAgent
 from google.adk.runners import Runner
 from google.adk.sessions import Session
@@ -8,22 +12,44 @@ from google.adk.events import Event
 from google.genai import types
 
 from src.tools import google_search, google_maps, get_url_context
+from src.prompts.prompt_manager import PromptManager
+
+logfire.configure()
+
+GEMINI_3_PRO = Gemini(
+    model="gemini-3-pro-preview",
+    retry_options=types.HttpRetryOptions(
+        attempts=5,
+        initial_delay=1,
+        max_delay=10,
+        http_status_codes=[403, 408, 429, 500, 502, 503, 504]
+    ))
+
 
 class AgentService:
     def __init__(self):
         self.app_name = "KyaHuaPathe"
         self.session_service = InMemorySessionService()
+        prompt_manager = PromptManager()
+        # Configure generate content with extended timeout
+        generate_config = types.GenerateContentConfig(
+            http_options=types.HttpOptions(
+                timeout=300_000,  # 300 seconds in milliseconds
+            ),
+        )
         self.grounding_agent = LlmAgent(
             name="ElFacto",
-            model=Gemini(model="gemini-3-pro-preview"),
-            static_instruction="You are ElFacto, always using different tools to get the most accurate information.",
-            tools=[ google_search, google_maps, get_url_context ]
+            model=GEMINI_3_PRO,
+            static_instruction=prompt_manager("el_facto"),
+            tools=[ google_search, google_maps, get_url_context ],
+            generate_content_config=generate_config,
         )
         self.agent = LlmAgent(
             name="Atom",
-            model=Gemini(model="gemini-3-pro-preview"),
-            static_instruction="You are atom, my always on personal assistant.",
-            sub_agents=[self.grounding_agent]
+            model=GEMINI_3_PRO,
+            static_instruction=prompt_manager("atom"),
+            sub_agents=[self.grounding_agent],
+            generate_content_config=generate_config,
         )
         self.runner = Runner(
             app_name=self.app_name,
@@ -50,12 +76,30 @@ class AgentService:
             user_id=user_id,
             new_message=content
         ):  
-            response = event.content.parts[0].text if event.content and event.content.parts and event.content.parts[0].text else ""
-            # TODO: Currently we just badly join the text, make it better, if doing function calls
-            # maybe we don't show the name, ask the model to generate some text before doing function call.
-            response += "\n".join([f"{fn.name}: {fn.args}" for fn in event.get_function_calls()])
-            response += "\n".join([str(fn.response) for fn in event.get_function_responses()])
-            if response:
-                await callback(response)
+            response = await self.format_event_response(event)
+            # telegram response after markdown formatting
+            await callback(response)
+                
+
+    async def format_event_response(self, event: Event):
+        response = ""
+        if event.content and event.content.parts and event.content.parts[0].text:
+            response += event.content.parts[0].text
+        
+        function_calls: List[types.FunctionCall] = event.get_function_calls()
+        for fn_call in function_calls:
+            response += f"**{fn_call.name}**\n"
+            for key, value in fn_call.args.items():
+                response += f"{key}: {value}\n"
+            response += "---\n"
+
+        # Currently we don't want to show response of tools
+        function_responses: List[types.FunctionResponse] = event.get_function_responses()
+        for fn_response in function_responses:
+            response += f"**{fn_response.name or 'No name'}**\n"
+            response += (fn_response.response.get("result", "N/A") or "N/A") if fn_response.response else "N/A"
+            response += "\n---\n"
+
+        return response
             
 agent_service = AgentService()
