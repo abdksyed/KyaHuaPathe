@@ -15,7 +15,7 @@ import telegramify_markdown
 from telegram.constants import MessageLimit
 
 from src.agent import agent_service
-from src.telegram.filter import handle_input_media
+from src.telegram.filter import handle_input_media, InputMediaInfo
 
 # Store application globally for lifespan management
 application = None
@@ -35,11 +35,16 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message=update.message.text,
         user_id=str(update.message.from_user.id),
         session_id=str(update.message.from_user.id),
-        callback=partial(format_and_send_reply, update=update)
+        callback=partial(
+            send_reply_to_chat,
+            bot=context.bot,
+            chat_id=update.message.chat_id,
+            reply_message_id=update.message.message_id
+        )
     )
 
 async def reply_for_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    media_info = await handle_input_media(update.message)
+    media_info: InputMediaInfo|None = await handle_input_media(update.message)
     time_to_wait_before_process = MAX_WAIT_TIME_FOR_NEXT_MEDIA
     if not media_info:
         await update.message.reply_text("I don't support this media type yet.")
@@ -47,7 +52,7 @@ async def reply_for_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # if media_group_id is None, it means it is a single media
     # we assign the message id as group id and send it to processing
-    media_group_id = media_info["media_group_id"]
+    media_group_id = media_info.media_group_id
     if not media_group_id:
         time_to_wait_before_process = 0
         media_group_id = str(update.message.message_id)
@@ -59,59 +64,74 @@ async def reply_for_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SCHEDULED_JOBS[media_group_id].schedule_removal()
         
     # Schedule the media group processing after a delay
+    # Only store primitives in job.data to avoid pinning large objects
     job = context.job_queue.run_once(
         process_media,
         when = time_to_wait_before_process,
         data = {
             "media_group_id": media_group_id,
-            "user_id": update.message.from_user.id,
-            "session_id": update.message.from_user.id,
-            "update": update,
-            "context": context
+            "user_id": str(update.message.from_user.id),
+            "session_id": str(update.message.from_user.id),
+            "chat_id": update.message.chat_id,
+            "reply_message_id": update.message.message_id,
         }
     )
     SCHEDULED_JOBS[media_group_id] = job
-    await update.message.reply_text(f"Received {media_info['file_name']}")
+    await update.message.reply_text(f"Received {media_info.file_name}")
 
 async def process_media(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
     media_group_id = job.data["media_group_id"]
     user_id = job.data["user_id"]
     session_id = job.data["session_id"]
-    update = job.data["update"]
-    context = job.data["context"]
-    media_group = MEDIA_GROUP_BUFFER[media_group_id]
+    chat_id = job.data["chat_id"]
+    reply_message_id = job.data["reply_message_id"]
+    
+    # pop the media group
+    media_group = MEDIA_GROUP_BUFFER.pop(media_group_id, [])
+    # remove the job from scheduled jobs
+    SCHEDULED_JOBS.pop(media_group_id, None)
+    
     # Download all the media
     downloaded_media = await asyncio.gather(
-        *[media["file_obj"].download_as_bytearray() for media in media_group],
+        *[media.file_obj.download_as_bytearray() for media in media_group],
         return_exceptions=True
     )
     # remove any exceptions
     downloaded_media = [
-        (media_bytes, media["mime_type"]) for media_bytes, media in zip(downloaded_media, media_group) if not isinstance(media, Exception)
+        (media_bytes, media.mime_type) for media_bytes, media in zip(downloaded_media, media_group) if not isinstance(media_bytes, Exception)
     ]
     if not downloaded_media:
-        await update.message.reply_text("Couldn't download media, can you please try again?")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Couldn't download media, can you please try again?",
+            reply_to_message_id=reply_message_id
+        )
         return
-    caption = next((media["caption"] for media in media_group if media["caption"]), "")
+    caption = next((media.caption for media in media_group if media.caption), "")
 
     # Run the agent
     await agent_service.run_query_with_media(
         message=caption,
         media_list=downloaded_media,
-        user_id=str(user_id),
-        session_id=str(session_id),
-        callback=partial(format_and_send_reply, update=update)
-    )   
+        user_id=user_id,
+        session_id=session_id,
+        callback=partial(send_reply_to_chat, bot=context.bot, chat_id=chat_id, reply_message_id=reply_message_id)
+    )
 
-async def format_and_send_reply(message: str, update: Update):
-    # Convert LLM markdown to Telegram MarkdownV2 format
+async def send_reply_to_chat(message: str, bot, chat_id: int, reply_message_id: int):
+    """Send reply using bot.send_message instead of update object (for use in scheduled jobs)."""
     formatted_message = telegramify_markdown.markdownify(message)
     def chunk(text, n=MAX):
         for i in range(0, len(text), n):
             yield text[i:i+n]
     for chunk_text in chunk(formatted_message):
-        await update.message.reply_text(chunk_text, parse_mode="MarkdownV2")
+        await bot.send_message(
+            chat_id=chat_id,
+            text=chunk_text,
+            parse_mode="MarkdownV2",
+            reply_to_message_id=reply_message_id
+        )
 
 
 async def start_bot():

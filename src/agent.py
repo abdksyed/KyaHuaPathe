@@ -93,7 +93,7 @@ class AgentService:
             # telegram response after markdown formatting
             await callback(response)
 
-    async def run_query_with_media(self, message, media_list, user_id, session_id, callback):
+    async def run_query_with_media(self, message: str, media_list: list[tuple[bytes, str]], user_id: str, session_id: str, callback):
         
         parts =[]
         for media_bytes, mime_type in media_list:
@@ -107,8 +107,9 @@ class AgentService:
                     data=media_bytes,
                     mime_type=mime_type,
                 ))
-        # Add the final caption
-        parts.append(types.Part(text=message))
+        # Add the final caption if present
+        if message:
+            parts.append(types.Part(text=message))
 
         await self.run_query(
             message=types.Content(role='user', parts=parts),
