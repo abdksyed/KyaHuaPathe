@@ -57,7 +57,7 @@ class AgentService:
             session_service=self.session_service,
         )
 
-    async def run_query(self, message, user_id, session_id, callback):
+    async def run_query(self, message: str|types.Content, user_id, session_id, callback):
         session = await self.session_service.get_session(
             app_name=self.app_name,
             user_id=user_id,
@@ -70,15 +70,41 @@ class AgentService:
                 session_id=session_id
             )
         
-        content = types.Content(role='user', parts=[types.Part(text=message)])
+        if isinstance(message, str):
+            message = types.Content(role='user', parts=[types.Part(text=message)])
         async for event in self.runner.run_async(
             session_id=session_id,
             user_id=user_id,
-            new_message=content
+            new_message=message
         ):  
             response = await self.format_event_response(event)
             # telegram response after markdown formatting
             await callback(response)
+
+    async def run_query_with_media(self, message, media_list, user_id, session_id, callback):
+        
+        parts =[]
+        for media_bytes, mime_type in media_list:
+            if "video" in mime_type:
+                # for video we have send the bytes as Blob and not directly as bytes
+                parts.append(types.Part(
+                    inline_data=types.Blob(data=media_bytes, mime_type=mime_type)
+                ))
+            else:
+                parts.append(types.Part.from_bytes(
+                    data=media_bytes,
+                    mime_type=mime_type,
+                ))
+        # Add the final caption
+        parts.append(types.Part(text=message))
+
+        await self.run_query(
+            message=types.Content(role='user', parts=parts),
+            user_id=user_id,
+            session_id=session_id,
+            callback=callback
+        )
+        
                 
 
     async def format_event_response(self, event: Event):
