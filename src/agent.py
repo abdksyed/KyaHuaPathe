@@ -1,5 +1,6 @@
 import os
 import logfire
+import re
 from typing import List
 
 from google.adk.agents import LlmAgent
@@ -71,7 +72,18 @@ class AgentService:
             )
         
         if isinstance(message, str):
-            message = types.Content(role='user', parts=[types.Part(text=message)])
+            parts = []
+            # if there is youtube video link, extract the link and add as another part
+            # https://www.youtube.com/watch?v=dQw4w9WgXcQ or https://youtu.be/dQw4w9WgXcQ
+            youtube_pattern = r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})'
+            youtube_match = re.search(youtube_pattern, message)
+            if youtube_match:
+                youtube_link = youtube_match.group(0)
+                parts.append(types.Part(
+                    file_data=types.FileData(file_uri=youtube_link)
+                ))
+            parts.append(types.Part(text=message))
+            message = types.Content(role='user', parts=parts)
         async for event in self.runner.run_async(
             session_id=session_id,
             user_id=user_id,
