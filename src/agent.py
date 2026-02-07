@@ -1,12 +1,11 @@
-import os
 import logfire
 import re
 from typing import List
 
 from google.adk.agents import LlmAgent
 from google.adk.runners import Runner
-from google.adk.sessions import Session
 from google.adk.models import Gemini
+
 # from google.adk.sessions.database_session_service import DatabaseSessionService
 from google.adk.sessions import InMemorySessionService
 from google.adk.events import Event
@@ -23,8 +22,9 @@ GEMINI_3_PRO = Gemini(
         attempts=5,
         initial_delay=1,
         max_delay=10,
-        http_status_codes=[403, 408, 429, 500, 502, 503, 504]
-    ))
+        http_status_codes=[403, 408, 429, 500, 502, 503, 504],
+    ),
+)
 
 
 class AgentService:
@@ -42,7 +42,7 @@ class AgentService:
             name="ElFacto",
             model=GEMINI_3_PRO,
             static_instruction=prompt_manager("el_facto"),
-            tools=[ google_search, google_maps, get_url_context ],
+            tools=[google_search, google_maps, get_url_context],
             generate_content_config=generate_config,
         )
         self.agent = LlmAgent(
@@ -58,73 +58,78 @@ class AgentService:
             session_service=self.session_service,
         )
 
-    async def run_query(self, message: str|types.Content, user_id, session_id, callback):
+    async def run_query(
+        self, message: str | types.Content, user_id, session_id, callback
+    ):
         session = await self.session_service.get_session(
-            app_name=self.app_name,
-            user_id=user_id,
-            session_id=session_id
+            app_name=self.app_name, user_id=user_id, session_id=session_id
         )
         if not session:
             await self.session_service.create_session(
-                app_name=self.app_name,
-                user_id=user_id,
-                session_id=session_id
+                app_name=self.app_name, user_id=user_id, session_id=session_id
             )
-        
+
         if isinstance(message, str):
             parts = []
             # if there is youtube video link, extract the link and add as another part
             # https://www.youtube.com/watch?v=dQw4w9WgXcQ or https://youtu.be/dQw4w9WgXcQ
-            youtube_pattern = r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})'
+            youtube_pattern = r"(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})"
             youtube_match = re.search(youtube_pattern, message)
             if youtube_match:
                 youtube_link = youtube_match.group(0)
-                parts.append(types.Part(
-                    file_data=types.FileData(file_uri=youtube_link)
-                ))
+                parts.append(
+                    types.Part(file_data=types.FileData(file_uri=youtube_link))
+                )
             parts.append(types.Part(text=message))
-            message = types.Content(role='user', parts=parts)
+            message = types.Content(role="user", parts=parts)
         async for event in self.runner.run_async(
-            session_id=session_id,
-            user_id=user_id,
-            new_message=message
-        ):  
+            session_id=session_id, user_id=user_id, new_message=message
+        ):
             response = await self.format_event_response(event)
             # telegram response after markdown formatting
             await callback(response)
 
-    async def run_query_with_media(self, message: str, media_list: list[tuple[bytes, str]], user_id: str, session_id: str, callback):
-        
-        parts =[]
+    async def run_query_with_media(
+        self,
+        message: str,
+        media_list: list[tuple[bytes, str]],
+        user_id: str,
+        session_id: str,
+        callback,
+    ):
+
+        parts = []
         for media_bytes, mime_type in media_list:
-            if "video" in mime_type:
+            if mime_type.startswith("video/"):
                 # for video we have send the bytes as Blob and not directly as bytes
-                parts.append(types.Part(
-                    inline_data=types.Blob(data=media_bytes, mime_type=mime_type)
-                ))
+                parts.append(
+                    types.Part(
+                        inline_data=types.Blob(data=media_bytes, mime_type=mime_type)
+                    )
+                )
             else:
-                parts.append(types.Part.from_bytes(
-                    data=media_bytes,
-                    mime_type=mime_type,
-                ))
+                parts.append(
+                    types.Part.from_bytes(
+                        data=media_bytes,
+                        mime_type=mime_type,
+                    )
+                )
         # Add the final caption if present
         if message:
             parts.append(types.Part(text=message))
 
         await self.run_query(
-            message=types.Content(role='user', parts=parts),
+            message=types.Content(role="user", parts=parts),
             user_id=user_id,
             session_id=session_id,
-            callback=callback
+            callback=callback,
         )
-        
-                
 
     async def format_event_response(self, event: Event):
         response = ""
         if event.content and event.content.parts and event.content.parts[0].text:
             response += event.content.parts[0].text
-        
+
         function_calls: List[types.FunctionCall] = event.get_function_calls()
         for fn_call in function_calls:
             response += f"**{fn_call.name}**\n"
@@ -133,12 +138,19 @@ class AgentService:
             response += "---\n"
 
         # Currently we don't want to show response of tools
-        function_responses: List[types.FunctionResponse] = event.get_function_responses()
+        function_responses: List[types.FunctionResponse] = (
+            event.get_function_responses()
+        )
         for fn_response in function_responses:
             response += f"**{fn_response.name or 'No name'}**\n"
-            response += (fn_response.response.get("result", "N/A") or "N/A") if fn_response.response else "N/A"
+            response += (
+                (fn_response.response.get("result", "N/A") or "N/A")
+                if fn_response.response
+                else "N/A"
+            )
             response += "\n---\n"
 
         return response
-            
+
+
 agent_service = AgentService()
