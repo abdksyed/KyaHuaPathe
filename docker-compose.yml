@@ -1,3 +1,8 @@
+networks:
+    pathe-net:
+        driver: bridge
+        name: pathe-net
+
 services:
     kyahuapathe:
         container_name: kyahuapathe
@@ -10,3 +15,23 @@ services:
         working_dir: /app
         volumes:
             - ./src:/app/src
+            - ./main.py:/app/main.py
+            - ./.env:/app/.env
+            - ./uvicorn.sh:/app/uvicorn.sh
+        networks:
+            - pathe-net
+
+    pathe_db:
+        container_name: ${DB_CONTAINER_NAME}
+        image: postgres:17.7-alpine
+        environment:
+            - POSTGRES_DB=${DB_NAME}
+            - POSTGRES_USER=${DB_USER}
+            - POSTGRES_PASSWORD=${DB_PASSWORD}
+        command: -p ${DB_PORT}
+        env_file:
+            - .env
+        volumes:
+            - ./data/postgres:/var/lib/postgresql/data
+        networks:
+            - pathe-net

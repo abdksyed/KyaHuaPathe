@@ -1,3 +1,4 @@
+import os
 import re
 from typing import Any, Callable
 
@@ -6,9 +7,7 @@ from google.adk.agents import LlmAgent
 from google.adk.events import Event
 from google.adk.models import Gemini
 from google.adk.runners import Runner
-
-# from google.adk.sessions.database_session_service import DatabaseSessionService
-from google.adk.sessions import InMemorySessionService
+from google.adk.sessions.database_session_service import DatabaseSessionService
 from google.genai import types
 
 from src.llm_models import LLMModels
@@ -31,7 +30,11 @@ GEMINI_3_PRO = Gemini(
 class AgentService:
     def __init__(self):
         self.app_name = "KyaHuaPathe"
-        self.session_service = InMemorySessionService()
+        db_url = (
+            f"postgresql+psycopg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
+            f"@{os.getenv('DB_CONTAINER_NAME')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+        )
+        self.session_service = DatabaseSessionService(db_url=db_url)
         prompt_manager = PromptManager()
         # Configure generate content with extended timeout
         generate_config = types.GenerateContentConfig(
