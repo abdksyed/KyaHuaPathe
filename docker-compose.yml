@@ -20,6 +20,9 @@ services:
             - ./uvicorn.sh:/app/uvicorn.sh
         networks:
             - pathe-net
+        depends_on:
+            pathe_db:
+                condition: service_healthy
 
     pathe_db:
         container_name: ${DB_CONTAINER_NAME}
@@ -35,3 +38,9 @@ services:
             - ./data/postgres:/var/lib/postgresql/data
         networks:
             - pathe-net
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME} -p ${DB_PORT}"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        restart: unless-stopped

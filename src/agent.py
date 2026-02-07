@@ -31,8 +31,8 @@ class AgentService:
     def __init__(self):
         self.app_name = "KyaHuaPathe"
         db_url = (
-            f"postgresql+psycopg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-            f"@{os.getenv('DB_CONTAINER_NAME')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+            f"postgresql+psycopg://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
+            f"@{os.environ['DB_CONTAINER_NAME']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
         )
         self.session_service = DatabaseSessionService(db_url=db_url)
         prompt_manager = PromptManager()
