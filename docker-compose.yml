@@ -10,13 +10,3 @@ services:
         working_dir: /app
         volumes:
             - ./src:/app/src
-
-    pathe_db:
-        container_name: kyahuapathe_db
-        image: postgres:17.7-alpine
-        env_file:
-            - .env
-        ports:
-            - ${DB_PORT}:${DB_PORT}
-        volumes:
-            - ./data/postgres:/var/lib/postgresql/data
