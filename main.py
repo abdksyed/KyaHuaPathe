@@ -23,13 +23,13 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/monitor")
-async def serverRunning():
+async def server_running():
     response = {"status": "running", "data": "Pathe is Up!"}
     return JSONResponse(content=response)
 
 
 @app.get("/health")
-async def healthCheck():
+async def health_check():
     response = {"status": "healthy", "data": "Pathe is Up!"}
     return JSONResponse(content=response)
 

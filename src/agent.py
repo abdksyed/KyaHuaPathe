@@ -1,23 +1,24 @@
-import logfire
 import re
-from typing import List
+from typing import Any, Callable
 
+import logfire
 from google.adk.agents import LlmAgent
-from google.adk.runners import Runner
+from google.adk.events import Event
 from google.adk.models import Gemini
+from google.adk.runners import Runner
 
 # from google.adk.sessions.database_session_service import DatabaseSessionService
 from google.adk.sessions import InMemorySessionService
-from google.adk.events import Event
 from google.genai import types
 
-from src.tools import google_search, google_maps, get_url_context
+from src.llm_models import LLMModels
 from src.prompts.prompt_manager import PromptManager
+from src.tools import get_url_context, google_maps, google_search
 
 logfire.configure()
 
 GEMINI_3_PRO = Gemini(
-    model="gemini-3-pro-preview",
+    model=LLMModels.GEMINI_3_PRO,
     retry_options=types.HttpRetryOptions(
         attempts=5,
         initial_delay=1,
@@ -59,7 +60,11 @@ class AgentService:
         )
 
     async def run_query(
-        self, message: str | types.Content, user_id, session_id, callback
+        self,
+        message: str | types.Content,
+        user_id: str,
+        session_id: str,
+        callback: Callable[..., Any],
     ):
         session = await self.session_service.get_session(
             app_name=self.app_name, user_id=user_id, session_id=session_id
@@ -77,6 +82,11 @@ class AgentService:
             youtube_match = re.search(youtube_pattern, message)
             if youtube_match:
                 youtube_link = youtube_match.group(0)
+                youtube_link = (
+                    f"https://{youtube_link}"
+                    if not youtube_link.startswith("https://")
+                    else youtube_link
+                )
                 parts.append(
                     types.Part(file_data=types.FileData(file_uri=youtube_link))
                 )
@@ -95,9 +105,8 @@ class AgentService:
         media_list: list[tuple[bytes, str]],
         user_id: str,
         session_id: str,
-        callback,
+        callback: Callable[..., Any],
     ):
-
         parts = []
         for media_bytes, mime_type in media_list:
             if mime_type.startswith("video/"):
@@ -130,7 +139,7 @@ class AgentService:
         if event.content and event.content.parts and event.content.parts[0].text:
             response += event.content.parts[0].text
 
-        function_calls: List[types.FunctionCall] = event.get_function_calls()
+        function_calls: list[types.FunctionCall] = event.get_function_calls()
         for fn_call in function_calls:
             response += f"**{fn_call.name}**\n"
             for key, value in fn_call.args.items():
@@ -138,7 +147,7 @@ class AgentService:
             response += "---\n"
 
         # Currently we don't want to show response of tools
-        function_responses: List[types.FunctionResponse] = (
+        function_responses: list[types.FunctionResponse] = (
             event.get_function_responses()
         )
         for fn_response in function_responses:
@@ -151,6 +160,3 @@ class AgentService:
             response += "\n---\n"
 
         return response
-
-
-agent_service = AgentService()

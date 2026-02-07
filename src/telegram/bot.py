@@ -1,8 +1,8 @@
 import asyncio
 import os
 from collections import defaultdict
+from collections.abc import Iterable
 from functools import partial
-from typing import Iterable
 
 import telegramify_markdown
 from telegram.constants import MessageLimit
@@ -14,9 +14,11 @@ from telegram.ext import (
     filters,  # filtering message types
 )
 
-from src.agent import agent_service
+from src.agent import AgentService
 from src.telegram.filter import InputMediaInfo, handle_input_media
 from telegram import ReplyParameters, Update  # for incoming updates from telegram
+
+# MAJOR TODO: Add try-catch blocks to handle exceptions occuring in the chain
 
 # Store application globally for lifespan management
 application = None
@@ -26,6 +28,8 @@ MEDIA_GROUP_BUFFER = defaultdict(list)
 # To track the scheduled jobs for media groups
 SCHEDULED_JOBS = {}
 MAX_WAIT_TIME_FOR_NEXT_MEDIA = 3
+
+agent_service = AgentService()
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -179,6 +183,7 @@ async def start_bot():
         | filters.VOICE
         | filters.VIDEO_NOTE
         | filters.Document.ALL
+        | filters.ANIMATION
     )
     application.add_handler(
         MessageHandler(media_filter & ~filters.COMMAND, reply_for_media)

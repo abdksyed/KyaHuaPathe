@@ -3,9 +3,12 @@ from google.genai import types
 
 from src.llm_models import LLMModels
 
+gemini_client = genai.Client()
+FALLBACK_RESPONSE = "[NO RESPONSE FROM TOOL]"
+
 
 async def google_search(query: str):
-    response: types.GenerateContentResponse = await genai.Client().aio.models.generate_content(
+    response: types.GenerateContentResponse = await gemini_client.aio.models.generate_content(
         model=LLMModels.GEMINI_3_PRO,
         contents=query,
         config=types.GenerateContentConfig(
@@ -16,12 +19,11 @@ async def google_search(query: str):
             ),
         ),
     )
-
-    return response.text
+    return response.text or FALLBACK_RESPONSE
 
 
 async def google_maps(query: str):
-    response: types.GenerateContentResponse = await genai.Client().aio.models.generate_content(
+    response: types.GenerateContentResponse = await gemini_client.aio.models.generate_content(
         model=LLMModels.GEMINI_2_5_PRO,  # Google Maps not supported for Gemini 3 models
         contents=query,
         config=types.GenerateContentConfig(
@@ -30,12 +32,11 @@ async def google_maps(query: str):
             thinking_config=types.ThinkingConfig(thinking_budget=-1),
         ),
     )
-
-    return response.text
+    return response.text or FALLBACK_RESPONSE
 
 
 async def get_url_context(url: str, query: str):
-    response: types.GenerateContentResponse = await genai.Client().aio.models.generate_content(
+    response: types.GenerateContentResponse = await gemini_client.aio.models.generate_content(
         model=LLMModels.GEMINI_3_PRO,
         contents=types.Content(
             role="user", parts=[types.Part(text=query), types.Part(text=f"URL: {url}")]
@@ -48,5 +49,4 @@ async def get_url_context(url: str, query: str):
             ),
         ),
     )
-
-    return response.text
+    return response.text or FALLBACK_RESPONSE

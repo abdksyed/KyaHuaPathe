@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
-from telegram import Message, File
+
+from telegram import File, Message
 
 SUPPORTED_MIME_TYPES = {
     "image/jpeg",
@@ -46,6 +47,8 @@ async def handle_input_media(message: Message) -> InputMediaInfo | None:
     caption = message.caption
     media_group_id = message.media_group_id
     attachment = message.effective_attachment
+    if not attachment:
+        return None
     if isinstance(attachment, Iterable):
         # generally, only the Photo is send as a list
         attachment = attachment[-1]

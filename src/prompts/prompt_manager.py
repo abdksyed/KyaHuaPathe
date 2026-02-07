@@ -1,5 +1,6 @@
-import jinja2
 from typing import Any
+
+import jinja2
 
 
 class PromptManager:
@@ -16,5 +17,5 @@ class PromptManager:
             template = self.env.get_template(template_path)
             rendered_content = template.render(**kwargs)
             return rendered_content
-        except jinja2.exceptions.TemplateNotFound:
-            raise ValueError(f"Template {template_path} not found")
+        except jinja2.exceptions.TemplateNotFound as exc:
+            raise ValueError(f"Template {template_path} not found") from exc
