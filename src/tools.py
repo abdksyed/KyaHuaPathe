@@ -1,10 +1,17 @@
 from google import genai
+from google.adk.tools import ToolContext
 from google.genai import types
+from pydantic import BaseModel, Field
 
+from src.constants import DB_URL
 from src.llm_models import LLMModels
+from src.tasks import CronParameters, TaskService, TriggerType
 
 gemini_client = genai.Client()
 FALLBACK_RESPONSE = "[NO RESPONSE FROM TOOL]"
+
+
+# TODO: use adk.tool, apparently then the prompt will take the doc string as description in the function schema
 
 
 async def google_search(query: str):
@@ -50,3 +57,80 @@ async def get_url_context(url: str, query: str):
         ),
     )
     return response.text or FALLBACK_RESPONSE
+
+
+async def generate_and_run_code(query: str):
+    response: types.GenerateContentResponse = (
+        await gemini_client.aio.models.generate_content(
+            model=LLMModels.GEMINI_3_PRO,
+            contents=query,
+            config=types.GenerateContentConfig(
+                system_instruction="Generate and run code based on the query",
+                tools=[types.Tool(code_execution=types.ToolCodeExecution())],
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.HIGH
+                ),
+            ),
+        )
+    )
+    return response.text or FALLBACK_RESPONSE
+
+
+class CreateReminder(BaseModel):
+    message: str = Field(..., description="The reminder message to send to the user.")
+    trigger_type: TriggerType = Field(
+        ...,
+        description="Type of trigger - DATE (one-time) or CRON (calendar-based recurring).",
+    )
+    trigger_time: str = Field(
+        default=None,
+        description="For DATE trigger - the exact datetime to send the reminder.",
+    )
+    cron_parameters: CronParameters = Field(
+        default=None,
+        description="For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).",
+    )
+
+
+async def create_reminder(
+    create_reminder: CreateReminder,
+    tool_context: ToolContext,
+) -> dict:
+    """Create a scheduled reminder for the user.
+
+    Args:
+        message: The reminder message to send to the user.
+        trigger_type: Type of trigger - DATE (one-time) or CRON (calendar-based recurring).
+        tool_context: ADK tool context (automatically injected).
+        trigger_time: For DATE trigger - the exact datetime to send the reminder.
+        cron_parameters: For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).
+
+    Returns:
+        A dict with status and reminder_id for future reference (e.g., deletion).
+    """
+    task_service = TaskService.get_instance(DB_URL)
+    reminder_id = await task_service.create_task(
+        message=create_reminder.message,
+        trigger_type=create_reminder.trigger_type,
+        chat_id=tool_context.state["chat_id"],
+        trigger_time=create_reminder.trigger_time,
+        cron_parameters=create_reminder.cron_parameters,
+    )
+    return {"status": "success", "reminder_id": reminder_id}
+
+
+async def delete_reminder(reminder_id: str) -> dict:
+    """Delete a previously created reminder.
+
+    Args:
+        reminder_id: The ID of the reminder to delete (returned when creating the reminder).
+
+    Returns:
+        A dict with status indicating success or failure.
+    """
+    task_service = TaskService.get_instance(DB_URL)
+    try:
+        await task_service.delete_task(reminder_id)
+        return {"status": "success", "message": f"Reminder {reminder_id} deleted"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

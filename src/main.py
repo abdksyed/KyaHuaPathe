@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from src.constants import DB_URL
+from src.tasks import TaskService
 from src.telegram.bot import start_bot, stop_bot
 
 load_dotenv()
@@ -13,7 +15,15 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     # Startup: Start the Telegram bot
     await start_bot()
+
+    # Startup: Initialize and start the TaskService (reminder scheduler)
+    task_service = TaskService.get_instance(DB_URL)
+    await task_service.start()
+
     yield
+
+    # Shutdown: Stop the TaskService gracefully
+    await task_service.stop()
     # Shutdown: Stop the Telegram bot gracefully
     await stop_bot()
 

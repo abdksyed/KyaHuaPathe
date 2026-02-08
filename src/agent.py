@@ -1,4 +1,3 @@
-import os
 import re
 from typing import Any, Callable
 
@@ -10,9 +9,17 @@ from google.adk.runners import Runner
 from google.adk.sessions.database_session_service import DatabaseSessionService
 from google.genai import types
 
+from src.constants import DB_URL
 from src.llm_models import LLMModels
 from src.prompts.prompt_manager import PromptManager
-from src.tools import get_url_context, google_maps, google_search
+from src.tools import (
+    create_reminder,
+    delete_reminder,
+    generate_and_run_code,
+    get_url_context,
+    google_maps,
+    google_search,
+)
 
 logfire.configure()
 
@@ -30,11 +37,7 @@ GEMINI_3_PRO = Gemini(
 class AgentService:
     def __init__(self):
         self.app_name = "KyaHuaPathe"
-        db_url = (
-            f"postgresql+psycopg://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
-            f"@{os.environ['DB_CONTAINER_NAME']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
-        )
-        self.session_service = DatabaseSessionService(db_url=db_url)
+        self.session_service = DatabaseSessionService(db_url=DB_URL)
         prompt_manager = PromptManager()
         # Configure generate content with extended timeout
         generate_config = types.GenerateContentConfig(
@@ -46,7 +49,14 @@ class AgentService:
             name="ElFacto",
             model=GEMINI_3_PRO,
             static_instruction=prompt_manager("el_facto"),
-            tools=[google_search, google_maps, get_url_context],
+            tools=[
+                google_search,
+                google_maps,
+                get_url_context,
+                generate_and_run_code,
+                create_reminder,
+                delete_reminder,
+            ],
             generate_content_config=generate_config,
         )
         self.agent = LlmAgent(
@@ -67,6 +77,7 @@ class AgentService:
         message: str | types.Content,
         user_id: str,
         session_id: str,
+        chat_id: int,
         callback: Callable[..., Any],
     ):
         session = await self.session_service.get_session(
@@ -74,7 +85,10 @@ class AgentService:
         )
         if not session:
             await self.session_service.create_session(
-                app_name=self.app_name, user_id=user_id, session_id=session_id
+                app_name=self.app_name,
+                user_id=user_id,
+                session_id=session_id,
+                state={"chat_id": chat_id},
             )
 
         if isinstance(message, str):
@@ -108,6 +122,7 @@ class AgentService:
         media_list: list[tuple[bytes, str]],
         user_id: str,
         session_id: str,
+        chat_id: int,
         callback: Callable[..., Any],
     ):
         parts = []
@@ -134,6 +149,7 @@ class AgentService:
             message=types.Content(role="user", parts=parts),
             user_id=user_id,
             session_id=session_id,
+            chat_id=chat_id,
             callback=callback,
         )
 
