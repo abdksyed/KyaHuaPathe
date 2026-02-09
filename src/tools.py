@@ -15,6 +15,13 @@ FALLBACK_RESPONSE = "[NO RESPONSE FROM TOOL]"
 
 
 async def google_search(query: str):
+    """
+    Search the web using Google Search for real-time information.
+    Args:
+        query (str): The detailed query to search on google
+    Returns:
+        str: The summary of the search results
+    """
     response: types.GenerateContentResponse = await gemini_client.aio.models.generate_content(
         model=LLMModels.GEMINI_3_PRO,
         contents=query,
@@ -30,6 +37,13 @@ async def google_search(query: str):
 
 
 async def google_maps(query: str):
+    """
+    Search Google Maps for location, places, and geographic information.
+    Args:
+        query (str): The detailed query to search on google maps
+    Returns:
+        str: The summary of the search results
+    """
     response: types.GenerateContentResponse = await gemini_client.aio.models.generate_content(
         model=LLMModels.GEMINI_2_5_PRO,  # Google Maps not supported for Gemini 3 models
         contents=query,
@@ -43,6 +57,14 @@ async def google_maps(query: str):
 
 
 async def get_url_context(url: str, query: str):
+    """
+    Extract information from a URL based on a specific query.
+    Args:
+        url (str): The URL to get information from
+        query (str): The information to be extracted from the given URL or other user instructions
+    Returns:
+        str: The extracted content or user requested contect from the url content.
+    """
     response: types.GenerateContentResponse = await gemini_client.aio.models.generate_content(
         model=LLMModels.GEMINI_3_PRO,
         contents=types.Content(
@@ -60,6 +82,13 @@ async def get_url_context(url: str, query: str):
 
 
 async def generate_and_run_code(query: str):
+    """
+    Generate and execute Python code to solve computational tasks.
+    Args:
+        query (str): The query to generate and run code based on
+    Returns:
+        str: The results from the generated code
+    """
     response: types.GenerateContentResponse = (
         await gemini_client.aio.models.generate_content(
             model=LLMModels.GEMINI_3_PRO,
@@ -97,14 +126,12 @@ async def create_reminder(
     tool_context: ToolContext,
 ) -> dict:
     """Create a scheduled reminder for the user.
-
     Args:
         message: The reminder message to send to the user.
         trigger_type: Type of trigger - DATE (one-time) or CRON (calendar-based recurring).
         tool_context: ADK tool context (automatically injected).
         trigger_time: For DATE trigger - the exact datetime to send the reminder.
         cron_parameters: For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).
-
     Returns:
         A dict with status and reminder_id for future reference (e.g., deletion).
     """
@@ -121,10 +148,8 @@ async def create_reminder(
 
 async def delete_reminder(reminder_id: str) -> dict:
     """Delete a previously created reminder.
-
     Args:
         reminder_id: The ID of the reminder to delete (returned when creating the reminder).
-
     Returns:
         A dict with status indicating success or failure.
     """
