@@ -1,18 +1,27 @@
-import os
 import re
+import uuid
 from typing import Any, Callable
 
 import logfire
 from google.adk.agents import LlmAgent
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
 from google.adk.models import Gemini
 from google.adk.runners import Runner
 from google.adk.sessions.database_session_service import DatabaseSessionService
 from google.genai import types
 
+from src.constants import DB_URL
 from src.llm_models import LLMModels
 from src.prompts.prompt_manager import PromptManager
-from src.tools import get_url_context, google_maps, google_search
+from src.tools import (
+    create_reminder,
+    delete_reminder,
+    generate_and_run_code,
+    get_url_context,
+    google_maps,
+    google_search,
+    list_reminders,
+)
 
 logfire.configure()
 
@@ -30,11 +39,7 @@ GEMINI_3_PRO = Gemini(
 class AgentService:
     def __init__(self):
         self.app_name = "KyaHuaPathe"
-        db_url = (
-            f"postgresql+psycopg://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}"
-            f"@{os.environ['DB_CONTAINER_NAME']}:{os.environ['DB_PORT']}/{os.environ['DB_NAME']}"
-        )
-        self.session_service = DatabaseSessionService(db_url=db_url)
+        self.session_service = DatabaseSessionService(db_url=DB_URL)
         prompt_manager = PromptManager()
         # Configure generate content with extended timeout
         generate_config = types.GenerateContentConfig(
@@ -46,7 +51,15 @@ class AgentService:
             name="ElFacto",
             model=GEMINI_3_PRO,
             static_instruction=prompt_manager("el_facto"),
-            tools=[google_search, google_maps, get_url_context],
+            tools=[
+                google_search,
+                google_maps,
+                get_url_context,
+                generate_and_run_code,
+                create_reminder,
+                delete_reminder,
+                list_reminders,
+            ],
             generate_content_config=generate_config,
         )
         self.agent = LlmAgent(
@@ -68,13 +81,27 @@ class AgentService:
         user_id: str,
         session_id: str,
         callback: Callable[..., Any],
+        **session_state,
     ):
         session = await self.session_service.get_session(
             app_name=self.app_name, user_id=user_id, session_id=session_id
         )
         if not session:
-            await self.session_service.create_session(
-                app_name=self.app_name, user_id=user_id, session_id=session_id
+            session = await self.session_service.create_session(
+                app_name=self.app_name,
+                user_id=user_id,
+                session_id=session_id,
+                state=session_state,
+            )
+        else:
+            # Update session state with latest values (e.g. reply_message_id changes per message)
+            await self.session_service.append_event(
+                session=session,
+                event=Event(
+                    invocation_id=f"state-update-{uuid.uuid4()}",
+                    author="user",
+                    actions=EventActions(state_delta=session_state),
+                ),
             )
 
         if isinstance(message, str):
@@ -109,6 +136,7 @@ class AgentService:
         user_id: str,
         session_id: str,
         callback: Callable[..., Any],
+        **session_state,
     ):
         parts = []
         for media_bytes, mime_type in media_list:
@@ -135,6 +163,7 @@ class AgentService:
             user_id=user_id,
             session_id=session_id,
             callback=callback,
+            **session_state,
         )
 
     async def format_event_response(self, event: Event):
