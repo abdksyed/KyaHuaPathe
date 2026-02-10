@@ -123,28 +123,29 @@ class CreateReminder(BaseModel):
 
 
 async def create_reminder(
-    create_reminder: CreateReminder,
+    reminder_options: CreateReminder,
     tool_context: ToolContext,
 ) -> dict:
     """Create a scheduled reminder for the user.
     Args:
-        message: The reminder message to send to the user.
-        trigger_type: Type of trigger - DATE (one-time) or CRON (calendar-based recurring).
+        reminder_options (dict): The reminder options to create a reminder.
+            - message: The reminder message to send to the user.
+            - trigger_type: Type of trigger - DATE (one-time) or CRON (calendar-based recurring).
+            - trigger_time: For DATE trigger - the exact datetime to send the reminder.
+            - cron_parameters: For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).
         tool_context: ADK tool context (automatically injected).
-        trigger_time: For DATE trigger - the exact datetime to send the reminder.
-        cron_parameters: For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).
     Returns:
         A dict with status and reminder_id for future reference (e.g., deletion).
     """
     try:
         task_service = TaskService.get_instance(DB_URL)
         reminder_id = await task_service.create_task(
-            message=create_reminder.message,
-            trigger_type=create_reminder.trigger_type,
+            message=reminder_options.message,
+            trigger_type=reminder_options.trigger_type,
             chat_id=tool_context.state["chat_id"],
             reply_message_id=tool_context.state["reply_message_id"],
-            trigger_time=create_reminder.trigger_time,
-            cron_parameters=create_reminder.cron_parameters,
+            trigger_time=reminder_options.trigger_time,
+            cron_parameters=reminder_options.cron_parameters,
         )
         return {"status": "success", "reminder_id": reminder_id}
     except (ValueError, ConflictingIdError, KeyError) as e:

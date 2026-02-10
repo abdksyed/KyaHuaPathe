@@ -79,7 +79,11 @@ class TaskService:
         job_kwargs = {
             "func": "src.tasks:send_reminder",  # Use string reference for serialization
             "trigger": trigger_type.value,
-            "args": [message, chat_id, reply_message_id],
+            "kwargs": {
+                "message": message,
+                "chat_id": chat_id,
+                "reply_message_id": reply_message_id,
+            },
             "id": reminder_id,
         }
 
@@ -94,6 +98,9 @@ class TaskService:
             cron_kwargs = {
                 k: v for k, v in cron_parameters.model_dump().items() if v is not None
             }
+            if not cron_kwargs:
+                raise ValueError("Atleast one cron field must be specified")
+
             job_kwargs.update(cron_kwargs)
 
         self.scheduler.add_job(**job_kwargs)
@@ -107,13 +114,12 @@ class TaskService:
         jobs = self.scheduler.get_jobs()
         reminders = []
         for job in jobs:
-            # job.args = [message, chat_id, reply_message_id]
-            if job.args[1] != chat_id:
+            if job.kwargs["chat_id"] != chat_id:
                 continue
             reminders.append(
                 {
                     "id": job.id,
-                    "message": job.args[0],
+                    "message": job.kwargs["message"],
                     "next_run_time": str(job.next_run_time),
                     "trigger": str(job.trigger),
                 }
