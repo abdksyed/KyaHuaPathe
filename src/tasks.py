@@ -1,10 +1,13 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from zoneinfo import ZoneInfo
 
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel, Field
+
+IST = ZoneInfo("Asia/Kolkata")
 
 
 class TriggerType(str, Enum):
@@ -34,6 +37,7 @@ class TaskService:
                 "coalesce": True,  # if missed multiple times, run only once
                 "misfire_grace_time": None,  # always fire, even if late
             },
+            timezone=IST,
         )
 
     @classmethod
@@ -90,7 +94,10 @@ class TaskService:
         if trigger_type == TriggerType.DATE:
             if not trigger_time:
                 raise ValueError("trigger_time is required for DATE trigger")
-            job_kwargs["run_date"] = datetime.fromisoformat(trigger_time)
+            run_date = datetime.fromisoformat(trigger_time)
+            if run_date.tzinfo is None:
+                run_date = run_date.replace(tzinfo=IST)
+            job_kwargs["run_date"] = run_date
         elif trigger_type == TriggerType.CRON:
             if not cron_parameters:
                 raise ValueError("cron_parameters is required for CRON trigger")
