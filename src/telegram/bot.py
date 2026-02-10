@@ -42,6 +42,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id=str(update.message.from_user.id),
         session_id=str(update.message.from_user.id),
         chat_id=update.message.chat_id,
+        reply_message_id=update.message.message_id,
         callback=partial(
             send_reply_to_chat,
             bot=context.bot,
@@ -130,6 +131,7 @@ async def process_media(context: ContextTypes.DEFAULT_TYPE):
         user_id=user_id,
         session_id=session_id,
         chat_id=chat_id,
+        reply_message_id=reply_message_id,
         callback=partial(
             send_reply_to_chat,
             bot=context.bot,

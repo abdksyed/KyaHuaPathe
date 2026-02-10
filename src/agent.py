@@ -1,9 +1,10 @@
 import re
+import uuid
 from typing import Any, Callable
 
 import logfire
 from google.adk.agents import LlmAgent
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
 from google.adk.models import Gemini
 from google.adk.runners import Runner
 from google.adk.sessions.database_session_service import DatabaseSessionService
@@ -19,6 +20,7 @@ from src.tools import (
     get_url_context,
     google_maps,
     google_search,
+    list_reminders,
 )
 
 logfire.configure()
@@ -56,6 +58,7 @@ class AgentService:
                 generate_and_run_code,
                 create_reminder,
                 delete_reminder,
+                list_reminders,
             ],
             generate_content_config=generate_config,
         )
@@ -77,18 +80,28 @@ class AgentService:
         message: str | types.Content,
         user_id: str,
         session_id: str,
-        chat_id: int,
         callback: Callable[..., Any],
+        **session_state,
     ):
         session = await self.session_service.get_session(
             app_name=self.app_name, user_id=user_id, session_id=session_id
         )
         if not session:
-            await self.session_service.create_session(
+            session = await self.session_service.create_session(
                 app_name=self.app_name,
                 user_id=user_id,
                 session_id=session_id,
-                state={"chat_id": chat_id},
+                state=session_state,
+            )
+        else:
+            # Update session state with latest values (e.g. reply_message_id changes per message)
+            await self.session_service.append_event(
+                session=session,
+                event=Event(
+                    invocation_id=f"state-update-{uuid.uuid4()}",
+                    author="user",
+                    actions=EventActions(state_delta=session_state),
+                ),
             )
 
         if isinstance(message, str):
@@ -122,8 +135,8 @@ class AgentService:
         media_list: list[tuple[bytes, str]],
         user_id: str,
         session_id: str,
-        chat_id: int,
         callback: Callable[..., Any],
+        **session_state,
     ):
         parts = []
         for media_bytes, mime_type in media_list:
@@ -149,8 +162,8 @@ class AgentService:
             message=types.Content(role="user", parts=parts),
             user_id=user_id,
             session_id=session_id,
-            chat_id=chat_id,
             callback=callback,
+            **session_state,
         )
 
     async def format_event_response(self, event: Event):

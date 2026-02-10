@@ -27,8 +27,9 @@ class TaskService:
     _instance: "TaskService" | None = None  # singleton instance
 
     def __init__(self, db_url: str):
+        self._db_url = db_url
         self.scheduler = AsyncIOScheduler(
-            jobstores={"default": SQLAlchemyJobStore(url=db_url)},
+            jobstores={"default": SQLAlchemyJobStore(url=self._db_url)},
             job_defaults={
                 "coalesce": True,  # if missed multiple times, run only once
                 "misfire_grace_time": None,  # always fire, even if late
@@ -39,6 +40,8 @@ class TaskService:
     def get_instance(cls, db_url: str) -> "TaskService":
         if cls._instance is None:
             cls._instance = cls(db_url)
+        if cls._instance is not None and db_url != cls._instance._db_url:
+            raise ValueError("TaskService already initialized with a different db_url")
         return cls._instance
 
     # region lifespan management
@@ -57,6 +60,7 @@ class TaskService:
         message: str,
         trigger_type: TriggerType,
         chat_id: int,
+        reply_message_id: int,
         trigger_time: str | None = None,
         cron_parameters: CronParameters | None = None,
     ) -> str:
@@ -66,6 +70,7 @@ class TaskService:
             message: The reminder message to send.
             trigger_type: One of DATE or CRON.
             chat_id: The Telegram chat ID to send the reminder to.
+            reply_message_id: The Telegram message ID to reply to.
             trigger_time: Required for DATE trigger - when to fire.
             cron_parameters: Required for CRON trigger - schedule pattern.
         """
@@ -74,7 +79,7 @@ class TaskService:
         job_kwargs = {
             "func": "src.tasks:send_reminder",  # Use string reference for serialization
             "trigger": trigger_type.value,
-            "args": [message, chat_id],
+            "args": [message, chat_id, reply_message_id],
             "id": reminder_id,
         }
 
@@ -97,28 +102,38 @@ class TaskService:
     async def delete_task(self, task_id: str):
         self.scheduler.remove_job(task_id)
 
+    async def list_tasks(self, chat_id: int) -> list[dict]:
+        """List all scheduled tasks for a specific chat."""
+        jobs = self.scheduler.get_jobs()
+        reminders = []
+        for job in jobs:
+            # job.args = [message, chat_id, reply_message_id]
+            if job.args[1] != chat_id:
+                continue
+            reminders.append(
+                {
+                    "id": job.id,
+                    "message": job.args[0],
+                    "next_run_time": str(job.next_run_time),
+                    "trigger": str(job.trigger),
+                }
+            )
+        return reminders
 
-async def send_reminder(message: str, chat_id: int):
+
+async def send_reminder(message: str, chat_id: int, reply_message_id: int):
     """Send a reminder message to a Telegram chat.
 
     This function is called by APScheduler when a reminder fires.
     Uses the global application from bot.py to send messages.
     """
-    # TODO: Can we just import the actual send reply function
-    # instead of creating the application and all
-    # Clean up this file
-
     # Import here to avoid circular imports
-    import telegramify_markdown
-
-    from src.telegram.bot import application
+    from src.telegram.bot import application, send_reply_to_chat
 
     if application and application.bot:
-        formatted_message = telegramify_markdown.markdownify(
-            f"🔔 **Reminder**\n\n{message}"
-        )
-        await application.bot.send_message(
+        await send_reply_to_chat(
+            message=f"🔔 **Reminder**\n\n{message}",
+            bot=application.bot,
             chat_id=chat_id,
-            text=formatted_message,
-            parse_mode="MarkdownV2",
+            reply_message_id=reply_message_id,
         )

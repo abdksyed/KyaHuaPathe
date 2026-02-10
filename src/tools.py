@@ -1,3 +1,4 @@
+from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
 from google import genai
 from google.adk.tools import ToolContext
 from google.genai import types
@@ -112,11 +113,11 @@ class CreateReminder(BaseModel):
         description="Type of trigger - DATE (one-time) or CRON (calendar-based recurring).",
     )
     trigger_time: str = Field(
-        default=None,
+        default="",
         description="For DATE trigger - the exact datetime to send the reminder.",
     )
     cron_parameters: CronParameters = Field(
-        default=None,
+        default=CronParameters(),
         description="For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).",
     )
 
@@ -135,15 +136,19 @@ async def create_reminder(
     Returns:
         A dict with status and reminder_id for future reference (e.g., deletion).
     """
-    task_service = TaskService.get_instance(DB_URL)
-    reminder_id = await task_service.create_task(
-        message=create_reminder.message,
-        trigger_type=create_reminder.trigger_type,
-        chat_id=tool_context.state["chat_id"],
-        trigger_time=create_reminder.trigger_time,
-        cron_parameters=create_reminder.cron_parameters,
-    )
-    return {"status": "success", "reminder_id": reminder_id}
+    try:
+        task_service = TaskService.get_instance(DB_URL)
+        reminder_id = await task_service.create_task(
+            message=create_reminder.message,
+            trigger_type=create_reminder.trigger_type,
+            chat_id=tool_context.state["chat_id"],
+            reply_message_id=tool_context.state["reply_message_id"],
+            trigger_time=create_reminder.trigger_time,
+            cron_parameters=create_reminder.cron_parameters,
+        )
+        return {"status": "success", "reminder_id": reminder_id}
+    except (ValueError, ConflictingIdError, KeyError) as e:
+        return {"status": "error", "message": str(e)}
 
 
 async def delete_reminder(reminder_id: str) -> dict:
@@ -157,5 +162,17 @@ async def delete_reminder(reminder_id: str) -> dict:
     try:
         await task_service.delete_task(reminder_id)
         return {"status": "success", "message": f"Reminder {reminder_id} deleted"}
-    except Exception as e:
+    except JobLookupError as e:
         return {"status": "error", "message": str(e)}
+
+
+async def list_reminders(tool_context: ToolContext) -> dict:
+    """List all active reminders for the current chat.
+    Args:
+        tool_context: ADK tool context (automatically injected).
+    Returns:
+        A dict with status and list of reminders with their IDs, messages, next run times, and triggers.
+    """
+    task_service = TaskService.get_instance(DB_URL)
+    reminders = await task_service.list_tasks(chat_id=tool_context.state["chat_id"])
+    return {"status": "success", "reminders": reminders}

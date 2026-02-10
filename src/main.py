@@ -1,14 +1,11 @@
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from src.constants import DB_URL
 from src.tasks import TaskService
 from src.telegram.bot import start_bot, stop_bot
-
-load_dotenv()
 
 
 @asynccontextmanager
