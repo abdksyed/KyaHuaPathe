@@ -7,6 +7,8 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pydantic import BaseModel, Field
 
+from src.twilio import MakeCall, TwilioService
+
 IST = ZoneInfo("Asia/Kolkata")
 
 
@@ -67,6 +69,7 @@ class TaskService:
         reply_message_id: int,
         trigger_time: str | None = None,
         cron_parameters: CronParameters | None = None,
+        make_call: MakeCall | None = None,
     ) -> str:
         """Create a scheduled task.
 
@@ -87,6 +90,7 @@ class TaskService:
                 "message": message,
                 "chat_id": chat_id,
                 "reply_message_id": reply_message_id,
+                "make_call": make_call.model_dump() if make_call else None,
             },
             "id": reminder_id,
         }
@@ -134,7 +138,12 @@ class TaskService:
         return reminders
 
 
-async def send_reminder(message: str, chat_id: int, reply_message_id: int):
+async def send_reminder(
+    message: str,
+    chat_id: int,
+    reply_message_id: int,
+    make_call: MakeCall | None = None,
+):
     """Send a reminder message to a Telegram chat.
 
     This function is called by APScheduler when a reminder fires.
@@ -150,3 +159,8 @@ async def send_reminder(message: str, chat_id: int, reply_message_id: int):
             chat_id=chat_id,
             reply_message_id=reply_message_id,
         )
+    if make_call:
+        make_call_kwargs = {k: v for k, v in make_call.items() if v is not None}
+        if make_call_kwargs:
+            twilio_service = TwilioService.get_instance()
+            twilio_service.make_call(**make_call_kwargs)

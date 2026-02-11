@@ -21,6 +21,7 @@ from src.tools import (
     google_maps,
     google_search,
     list_reminders,
+    make_call,
 )
 
 logfire.configure()
@@ -59,6 +60,7 @@ class AgentService:
                 create_reminder,
                 delete_reminder,
                 list_reminders,
+                make_call,
             ],
             generate_content_config=generate_config,
         )

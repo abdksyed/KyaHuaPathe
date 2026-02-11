@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from src.constants import DB_URL
 from src.llm_models import LLMModels
 from src.tasks import CronParameters, TaskService, TriggerType
+from src.twilio import MakeCall, TwilioService
 
 gemini_client = genai.Client()
 FALLBACK_RESPONSE = "[NO RESPONSE FROM TOOL]"
@@ -120,6 +121,10 @@ class CreateReminder(BaseModel):
         default=CronParameters(),
         description="For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).",
     )
+    make_call: MakeCall = Field(
+        default=MakeCall(),
+        description="Make a call to a number with custom message",
+    )
 
 
 async def create_reminder(
@@ -133,6 +138,9 @@ async def create_reminder(
             - trigger_type: Type of trigger - DATE (one-time) or CRON (calendar-based recurring).
             - trigger_time: For DATE trigger - the exact datetime to send the reminder.
             - cron_parameters: For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).
+            - make_call: Make a call to a number with custom message
+                - call_to: The number to call.
+                - twiml_message: The TwiML message to send to the number.
         tool_context: ADK tool context (automatically injected).
     Returns:
         A dict with status and reminder_id for future reference (e.g., deletion).
@@ -146,6 +154,7 @@ async def create_reminder(
             reply_message_id=tool_context.state["reply_message_id"],
             trigger_time=reminder_options.trigger_time,
             cron_parameters=reminder_options.cron_parameters,
+            make_call=reminder_options.make_call,
         )
         return {"status": "success", "reminder_id": reminder_id}
     except (ValueError, ConflictingIdError, KeyError) as e:
@@ -177,3 +186,16 @@ async def list_reminders(tool_context: ToolContext) -> dict:
     task_service = TaskService.get_instance(DB_URL)
     reminders = await task_service.list_tasks(chat_id=tool_context.state["chat_id"])
     return {"status": "success", "reminders": reminders}
+
+
+async def make_call(call_to: str, twiml_message: str):
+    """Make a call to a number.
+    Args:
+        call_to (str) : The number to call. (Options: HIM or HER)
+        twiml_message (str) : The TwiML XML message to send to the number.
+    Returns:
+        A dict with status indicating success or failure.
+    """
+    twilio_service = TwilioService.get_instance()
+    twilio_service.make_call(call_to, twiml_message)
+    return {"status": "success", "message": f"Call made to {call_to}"}
