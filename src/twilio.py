@@ -18,6 +18,10 @@ class TwilioService:
         self.account_sid = os.getenv("TWILIO_ACCOUNT_SID")
         self.auth_token = os.getenv("TWILIO_AUTH_TOKEN")
         self.client = Client(self.account_sid, self.auth_token)
+        self.directory = {
+            "HER": os.getenv("CALL_TO_HER"),
+            "HIM": os.getenv("CALL_TO_HIM"),
+        }
 
     @classmethod
     def get_instance(cls) -> "TwilioService":
@@ -28,6 +32,6 @@ class TwilioService:
     def make_call(self, call_to: str, twiml_message: str):
         self.client.calls.create(
             twiml='<?xml version="1.0" encoding="UTF-8"?>' + twiml_message,
-            to={"HER": "xxx", "HIM": "yyy"}.get(call_to, call_to),
-            from_="zzz",
+            to=self.directory.get(call_to, call_to),
+            from_=os.getenv("TWILIO_PHONE_NUMBER"),
         )
