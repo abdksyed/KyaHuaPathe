@@ -115,15 +115,15 @@ class CreateReminder(BaseModel):
     )
     trigger_time: str = Field(
         default="",
-        description="For DATE trigger - the exact datetime to send the reminder.",
+        description="For DATE trigger - ISO 8601 datetime with timezone (e.g., 2026-02-15T18:00:00+05:30).",
     )
     cron_parameters: CronParameters = Field(
         default=CronParameters(),
-        description="For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).",
+        description="For CRON trigger - calendar schedule fields (year, month, day, week, day_of_week, hour, minute, second). Values can be: specific (6), range (mon-fri), list (1,15), or step (*/2).",
     )
     make_call: MakeCall = Field(
         default=MakeCall(),
-        description="Make a call to a number with custom message",
+        description="Optional. Pass this to make a phone call when the reminder fires along with sending a text reminder. Set call_to to HIM or HER and twiml_message to a valid TwiML XML string.",
     )
 
 
@@ -131,19 +131,22 @@ async def create_reminder(
     reminder_options: CreateReminder,
     tool_context: ToolContext,
 ) -> dict:
-    """Create a scheduled reminder for the user.
-    Args:
-        reminder_options (dict): The reminder options to create a reminder.
-            - message: The reminder message to send to the user.
-            - trigger_type: Type of trigger - DATE (one-time) or CRON (calendar-based recurring).
-            - trigger_time: For DATE trigger - the exact datetime to send the reminder.
-            - cron_parameters: For CRON trigger - calendar schedule (hour, minute, day_of_week, etc.).
-            - make_call: Make a call to a number with custom message
-                - call_to: The number to call.
-                - twiml_message: The TwiML message to send to the number.
-        tool_context: ADK tool context (automatically injected).
-    Returns:
-        A dict with status and reminder_id for future reference (e.g., deletion).
+    """Create a scheduled reminder for the user. Always confirm reminder details with the user before creating.
+
+    Use this tool when the user wants to be reminded at a future time, including scheduled calls.
+    If the user says "call me at X time" or "call me tomorrow about Y", use THIS tool with make_call — do NOT use make_call directly for future/scheduled calls.
+
+    Trigger type examples:
+        - "Remind me tomorrow at 5 PM" → DATE trigger with trigger_time
+        - "Every day at 6 AM" → CRON trigger with hour="6", minute="0"
+        - "Every Monday at 9 AM" → CRON with day_of_week="mon", hour="9", minute="0"
+        - "Every weekday at 8:30 AM" → CRON with day_of_week="mon-fri", hour="8", minute="30"
+
+    For scheduled calls, pass make_call with:
+        - call_to: HIM or HER
+        - twiml_message: Valid TwiML XML (see make_call docstring for TwiML format)
+
+    Returns reminder_id — always tell the user this ID so they can delete it later.
     """
     try:
         task_service = TaskService.get_instance(DB_URL)
@@ -162,7 +165,7 @@ async def create_reminder(
 
 
 async def delete_reminder(reminder_id: str) -> dict:
-    """Delete a previously created reminder.
+    """Delete a previously created reminder. To edit a reminder, delete the old one and create a new one.
     Args:
         reminder_id: The ID of the reminder to delete (returned when creating the reminder).
     Returns:
@@ -189,10 +192,21 @@ async def list_reminders(tool_context: ToolContext) -> dict:
 
 
 async def make_call(call_to: str, twiml_message: str):
-    """Make a call to a number.
+    """Make an IMMEDIATE phone call right now. Use ONLY when the user wants to call someone instantly
+    (e.g., "call him", "call her", "make a call now"). For future/scheduled calls, use create_reminder with make_call parameter instead.
+
     Args:
-        call_to (str) : The number to call. (Options: HIM or HER)
-        twiml_message (str) : The TwiML XML message to send to the number.
+        call_to (str): Who to call — HIM or HER.
+        twiml_message (str): TwiML XML message (under 4000 chars). Format:
+            <Response>
+                <Say voice="Polly.Salli-Neural" language="en-US">Your message</Say>
+            </Response>
+
+            <Say> attributes: voice (man, woman, Polly.Salli-Neural for English, Google.hi-IN-Chirp3-HD-Leda for Hindi),
+                               language (en-US, hi-IN, etc.), loop (default 1, 0 for infinite).
+            Use <Pause length="2"/> BETWEEN <Say> tags for pauses.
+            For Hindi, ALWAYS use voice="Google.hi-IN-Chirp3-HD-Leda" language="hi-IN".
+            For long texts, break into multiple <Say> tags with <Pause> in between.
     Returns:
         A dict with status indicating success or failure.
     """

@@ -48,10 +48,10 @@ class AgentService:
                 timeout=300_000,  # 300 seconds in milliseconds
             ),
         )
-        self.grounding_agent = LlmAgent(
-            name="ElFacto",
+        self.agent = LlmAgent(
+            name="Atom",
             model=GEMINI_3_PRO,
-            static_instruction=prompt_manager("el_facto"),
+            static_instruction=prompt_manager("atom"),
             tools=[
                 google_search,
                 google_maps,
@@ -62,13 +62,6 @@ class AgentService:
                 list_reminders,
                 make_call,
             ],
-            generate_content_config=generate_config,
-        )
-        self.agent = LlmAgent(
-            name="Atom",
-            model=GEMINI_3_PRO,
-            static_instruction=prompt_manager("atom"),
-            sub_agents=[self.grounding_agent],
             generate_content_config=generate_config,
         )
         self.runner = Runner(
