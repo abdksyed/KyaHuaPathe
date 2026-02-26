@@ -1,3 +1,5 @@
+import asyncio
+
 from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
 from google import genai
 from google.adk.tools import ToolContext
@@ -203,13 +205,16 @@ async def make_call(call_to: str, twiml_message: str):
             </Response>
 
             <Say> attributes: voice (man, woman, Polly.Salli-Neural for English, Google.hi-IN-Chirp3-HD-Leda for Hindi),
-                               language (en-US, hi-IN, etc.), loop (default 1, 0 for infinite).
+                            language (en-US, hi-IN, etc.), loop (default 1, 0 for infinite).
             Use <Pause length="2"/> BETWEEN <Say> tags for pauses.
             For Hindi, ALWAYS use voice="Google.hi-IN-Chirp3-HD-Leda" language="hi-IN".
             For long texts, break into multiple <Say> tags with <Pause> in between.
     Returns:
         A dict with status indicating success or failure.
     """
-    twilio_service = TwilioService.get_instance()
-    twilio_service.make_call(call_to, twiml_message)
-    return {"status": "success", "message": f"Call made to {call_to}"}
+    try:
+        twilio_service = TwilioService.get_instance()
+        await asyncio.to_thread(twilio_service.make_call, call_to, twiml_message)
+        return {"status": "success", "message": f"Call made to {call_to}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

@@ -142,7 +142,8 @@ async def send_reminder(
     message: str,
     chat_id: int,
     reply_message_id: int,
-    make_call: MakeCall | None = None,
+    # make_call is a dict because it is serialized and deserialized by APScheduler
+    make_call: dict | None = None,
 ):
     """Send a reminder message to a Telegram chat.
 
@@ -160,7 +161,11 @@ async def send_reminder(
             reply_message_id=reply_message_id,
         )
     if make_call:
-        make_call_kwargs = {k: v for k, v in make_call.items() if v is not None}
-        if make_call_kwargs:
+        make_call = MakeCall(**make_call)
+        try:
             twilio_service = TwilioService.get_instance()
-            twilio_service.make_call(**make_call_kwargs)
+            twilio_service.make_call(
+                call_to=make_call.call_to, twiml_message=make_call.twiml_message
+            )
+        except Exception as e:
+            print(f"Error making call: {e}")
